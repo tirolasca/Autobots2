@@ -1,7 +1,14 @@
 package com.autobots.automanager.controles;
 
+import static org.springframework.hateoas.server.mvc.WebMvcLinkBuilder.linkTo;
+import static org.springframework.hateoas.server.mvc.WebMvcLinkBuilder.methodOn;
+
 import java.util.List;
 
+import org.springframework.hateoas.CollectionModel;
+import org.springframework.hateoas.EntityModel;
+import org.springframework.hateoas.IanaLinkRelations;
+import org.springframework.hateoas.Link;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -40,33 +47,47 @@ public class DocumentoControle {
 				.orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Cliente não encontrado"));
 	}
 
+	private EntityModel<Documento> montarModelo(long clienteId, Documento documento) {
+		Link self = linkTo(methodOn(DocumentoControle.class).obterDocumento(clienteId, documento.getId()))
+				.withSelfRel();
+		Link lista = linkTo(methodOn(DocumentoControle.class).obterDocumentos(clienteId)).withRel("documentos");
+		Link cliente = linkTo(methodOn(ClienteControle.class).obterCliente(clienteId)).withRel("cliente");
+		return EntityModel.of(documento, self, lista, cliente);
+	}
+
 	@GetMapping("/{id}")
-	public ResponseEntity<Documento> obterDocumento(@PathVariable long clienteId, @PathVariable long id) {
+	public ResponseEntity<EntityModel<Documento>> obterDocumento(@PathVariable long clienteId, @PathVariable long id) {
 		Cliente cliente = obterClienteOuFalhar(clienteId);
 		Documento documento = selecionador.selecionar(cliente.getDocumentos(), id);
 		if (documento == null) {
 			return ResponseEntity.notFound().build();
 		}
-		return ResponseEntity.ok(documento);
+		return ResponseEntity.ok(montarModelo(clienteId, documento));
 	}
 
 	@GetMapping("/lista")
-	public ResponseEntity<List<Documento>> obterDocumentos(@PathVariable long clienteId) {
+	public ResponseEntity<CollectionModel<EntityModel<Documento>>> obterDocumentos(@PathVariable long clienteId) {
 		Cliente cliente = obterClienteOuFalhar(clienteId);
-		return ResponseEntity.ok(cliente.getDocumentos());
+		List<EntityModel<Documento>> modelos = cliente.getDocumentos().stream()
+				.map(documento -> montarModelo(clienteId, documento)).toList();
+		Link self = linkTo(methodOn(DocumentoControle.class).obterDocumentos(clienteId)).withSelfRel();
+		Link clienteLink = linkTo(methodOn(ClienteControle.class).obterCliente(clienteId)).withRel("cliente");
+		return ResponseEntity.ok(CollectionModel.of(modelos, self, clienteLink));
 	}
 
 	@PostMapping("/cadastro")
-	public ResponseEntity<Documento> cadastrarDocumento(@PathVariable long clienteId,
+	public ResponseEntity<EntityModel<Documento>> cadastrarDocumento(@PathVariable long clienteId,
 			@RequestBody Documento documento) {
 		Cliente cliente = obterClienteOuFalhar(clienteId);
 		cliente.getDocumentos().add(documento);
 		clienteRepositorio.save(cliente);
-		return ResponseEntity.status(HttpStatus.CREATED).body(documento);
+		EntityModel<Documento> modelo = montarModelo(clienteId, documento);
+		return ResponseEntity.status(HttpStatus.CREATED)
+				.location(modelo.getRequiredLink(IanaLinkRelations.SELF).toUri()).body(modelo);
 	}
 
 	@PutMapping("/atualizar")
-	public ResponseEntity<Documento> atualizarDocumento(@PathVariable long clienteId,
+	public ResponseEntity<EntityModel<Documento>> atualizarDocumento(@PathVariable long clienteId,
 			@RequestBody Documento atualizacao) {
 		Cliente cliente = obterClienteOuFalhar(clienteId);
 		Documento documento = selecionador.selecionar(cliente.getDocumentos(), atualizacao.getId());
@@ -76,7 +97,7 @@ public class DocumentoControle {
 		DocumentoAtualizador atualizador = new DocumentoAtualizador();
 		atualizador.atualizar(documento, atualizacao);
 		clienteRepositorio.save(cliente);
-		return ResponseEntity.ok(documento);
+		return ResponseEntity.ok(montarModelo(clienteId, documento));
 	}
 
 	@DeleteMapping("/excluir/{id}")

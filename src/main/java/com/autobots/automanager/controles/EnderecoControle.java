@@ -1,5 +1,11 @@
 package com.autobots.automanager.controles;
 
+import static org.springframework.hateoas.server.mvc.WebMvcLinkBuilder.linkTo;
+import static org.springframework.hateoas.server.mvc.WebMvcLinkBuilder.methodOn;
+
+import org.springframework.hateoas.EntityModel;
+import org.springframework.hateoas.IanaLinkRelations;
+import org.springframework.hateoas.Link;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -35,26 +41,34 @@ public class EnderecoControle {
 				.orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Cliente não encontrado"));
 	}
 
+	private EntityModel<Endereco> montarModelo(long clienteId, Endereco endereco) {
+		Link self = linkTo(methodOn(EnderecoControle.class).obterEndereco(clienteId)).withSelfRel();
+		Link cliente = linkTo(methodOn(ClienteControle.class).obterCliente(clienteId)).withRel("cliente");
+		return EntityModel.of(endereco, self, cliente);
+	}
+
 	@GetMapping
-	public ResponseEntity<Endereco> obterEndereco(@PathVariable long clienteId) {
+	public ResponseEntity<EntityModel<Endereco>> obterEndereco(@PathVariable long clienteId) {
 		Cliente cliente = obterClienteOuFalhar(clienteId);
 		if (cliente.getEndereco() == null) {
 			return ResponseEntity.notFound().build();
 		}
-		return ResponseEntity.ok(cliente.getEndereco());
+		return ResponseEntity.ok(montarModelo(clienteId, cliente.getEndereco()));
 	}
 
 	@PostMapping("/cadastro")
-	public ResponseEntity<Endereco> cadastrarEndereco(@PathVariable long clienteId,
+	public ResponseEntity<EntityModel<Endereco>> cadastrarEndereco(@PathVariable long clienteId,
 			@RequestBody Endereco endereco) {
 		Cliente cliente = obterClienteOuFalhar(clienteId);
 		cliente.setEndereco(endereco);
 		clienteRepositorio.save(cliente);
-		return ResponseEntity.status(HttpStatus.CREATED).body(endereco);
+		EntityModel<Endereco> modelo = montarModelo(clienteId, endereco);
+		return ResponseEntity.status(HttpStatus.CREATED)
+				.location(modelo.getRequiredLink(IanaLinkRelations.SELF).toUri()).body(modelo);
 	}
 
 	@PutMapping("/atualizar")
-	public ResponseEntity<Endereco> atualizarEndereco(@PathVariable long clienteId,
+	public ResponseEntity<EntityModel<Endereco>> atualizarEndereco(@PathVariable long clienteId,
 			@RequestBody Endereco atualizacao) {
 		Cliente cliente = obterClienteOuFalhar(clienteId);
 		if (cliente.getEndereco() == null) {
@@ -63,7 +77,7 @@ public class EnderecoControle {
 		EnderecoAtualizador atualizador = new EnderecoAtualizador();
 		atualizador.atualizar(cliente.getEndereco(), atualizacao);
 		clienteRepositorio.save(cliente);
-		return ResponseEntity.ok(cliente.getEndereco());
+		return ResponseEntity.ok(montarModelo(clienteId, cliente.getEndereco()));
 	}
 
 	@DeleteMapping("/excluir")
