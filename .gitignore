@@ -3,7 +3,7 @@ HELP.md
 # Maven
 target/
 !.mvn/wrapper/maven-wrapper.jar
-.mvn/wrapper/maven-wrapper.properties
+!.mvn/wrapper/maven-wrapper.properties
 
 # Spring Boot
 spring-boot-devtools/
